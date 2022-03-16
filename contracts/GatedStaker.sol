@@ -8,18 +8,26 @@ contract GatedStaker {
     // keeping staked amount and time only in record
     // earned royalties are calculated at point of withdrawal
     // ???and record is destroyed???
+
     struct Record {
         address stakedBy;
         uint256 stakedAt;
         uint256 amount;
     }
 
+    event Staked(Record record, uint256 totalStakes);
+    event Withdrawn(Record record, uint256 totalStakes);
+
     // e.g BOREDAPES NFT: 0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d
     string public gateTokenName;
     IERC721 public gateToken;
     IERC20 public stakeToken;
+
+    
     mapping(address => Record) private records;
     uint256 private totalStakes;
+    
+    
     uint256 public minStake = 1000;
     // monthly-percentage-yield
     uint256 public MPY = 10;
@@ -78,6 +86,10 @@ contract GatedStaker {
         _record.stakedBy = msg.sender;
         _record.amount = _amount;
         _record.stakedAt = block.timestamp;
+
+        totalStakes += _amount;
+
+        emit Staked(_record, totalStakes);
         return true;
     }
 
@@ -89,39 +101,44 @@ contract GatedStaker {
         Record storage _record = records[msg.sender];
         uint256 _maturity = block.timestamp - _record.stakedAt;
         uint256 _amount = _record.amount;
-        
-        uint256 _yield  = calculateYield(_maturity, _amount);
-        uint _totalReturns = _yield + _amount;
+
+        uint256 _yield = calculateYield(_maturity, _amount);
+        uint256 _totalReturns = _yield + _amount;
 
         // effect balances and records
         totalStakes -= _record.amount;
         delete records[msg.sender];
 
-        require(stakeToken.transfer(msg.sender, _totalReturns), "Error Transfering");
+        require(
+            stakeToken.transfer(msg.sender, _totalReturns),
+            "Error Transfering"
+        );
+
+        emit Withdrawn(_record, totalStakes);
         return true;
-        
     }
 
     // calculates and returns yield
-    function calculateYield(uint256 _maturity, uint256 _amount) internal view returns(uint256) {
+    function calculateYield(uint256 _maturity, uint256 _amount)
+        internal
+        view
+        returns (uint256)
+    {
         uint256 _yield = 0;
-        
-        if (_maturity < 3 days){
+
+        if (_maturity < 3 days) {
             return _yield;
         }
 
         // cycles is 30days long
         uint256 _months = _maturity / 30 days;
-        
+
         // for withdraws before a cycle completes, count month as 1
-        if (_months==0) {
+        if (_months == 0) {
             _months = 1;
         }
 
         _yield = (_months * MPY * _amount) / 100;
-
         return _yield;
-
     }
-
 }
