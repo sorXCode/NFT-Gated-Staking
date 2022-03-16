@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract Staker {
+contract GatedStaker {
     // keeping staked amount and time only in record
     // earned royalties are calculated at point of withdrawal
     // ???and record is destroyed???
@@ -14,7 +14,7 @@ contract Staker {
         uint256 amount;
     }
 
-    // BOREDAPES NFT: 0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d
+    // e.g BOREDAPES NFT: 0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d
     string public gateTokenName;
     IERC721 public gateToken;
     IERC20 public stakeToken;
@@ -22,7 +22,7 @@ contract Staker {
     uint256 private totalStakes;
     uint256 public minStake = 1000;
     // monthly-percentage-yield
-    uint256 MPY = 10;
+    uint256 public MPY = 10;
 
     constructor(
         string memory _gateTokenName,
@@ -97,7 +97,8 @@ contract Staker {
         totalStakes -= _record.amount;
         delete records[msg.sender];
 
-        stakeToken.transfer(msg.sender, _totalReturns);
+        require(stakeToken.transfer(msg.sender, _totalReturns), "Error Transfering");
+        return true;
         
     }
 
