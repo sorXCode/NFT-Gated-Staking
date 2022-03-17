@@ -15,7 +15,10 @@ contract GatedStaker {
         bool isActive;
     }
 
-    enum ACTION {STAKE, WITHDRAW}
+    enum ACTION {
+        STAKE,
+        WITHDRAW
+    }
 
     event Alert(Record record, ACTION action);
 
@@ -26,8 +29,7 @@ contract GatedStaker {
     mapping(address => Record) private records;
     uint256 private totalStakes;
 
-    uint256 public minStake = 1000;
-    // monthly-percentage-yield: a month is 30days
+    uint256 public minStake = 10**9;
     uint256 public MPY = 10;
 
     constructor(
@@ -60,21 +62,24 @@ contract GatedStaker {
      *  account must have the gateToken
      */
 
-    function stake(uint256 _amt) public validStake(_amt) hasGateToken returns (bool)
+    function stake(uint256 _amt)
+        public
+        validStake(_amt)
+        hasGateToken
+        returns (bool)
     {
         require(
             stakeToken.transferFrom(msg.sender, address(this), _amt),
             "Staking failed"
         );
         // Avoiding assigning to function parameter
-        uint _totalAmt = _amt;
+        uint256 _totalAmt = _amt;
         Record storage _record = records[msg.sender];
 
         // check that record exist for account, and update accordingly
-        if (_record.isActive){
+        if (_record.isActive) {
             _totalAmt += calculateYield(_record);
-        }
-        else {
+        } else {
             _record.stakedBy = msg.sender;
             _record.isActive = true;
         }
@@ -106,30 +111,32 @@ contract GatedStaker {
     }
 
     // calculates and returns yield
-    function calculateYield(Record memory _record) internal view returns (uint256)
+    function calculateYield(Record memory _record)
+        internal
+        view
+        returns (uint256)
     {
         uint256 _yield = 0;
         // cycle is 30days long
-        uint256 cycle = 30 days;
-        // uint256 minCycle = 3 days;
+        uint256 cycle = 1 seconds;
+        uint256 minCycle = 3 days;
 
         uint256 _maturity = block.timestamp - _record.stakedAt;
 
-        if (_maturity < 3 days || _maturity < cycle) {
+        if (_maturity < minCycle) {
             return _yield;
         }
 
-        uint256 _months = _maturity / cycle;
+        uint256 _cycles = _maturity / cycle;
 
-        _yield = (_months * MPY * _record.amount) / 100;
+        _yield = (_cycles * MPY * _record.amount) / (100 * 30 * 24); // yield earned to an hour
         return _yield;
     }
 
-    function updateAndEmit(Record _record, ACTION _action) internal view {
-        if (_action==ACTION.STAKE){
+    function updateAndEmit(Record storage _record, ACTION _action) internal {
+        if (_action == ACTION.STAKE) {
             totalStakes += _record.amount;
-        }
-        else {
+        } else {
             totalStakes -= _record.amount;
         }
         emit Alert(_record, _action);
