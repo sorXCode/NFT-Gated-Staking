@@ -6,30 +6,28 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract GatedStaker {
     // keeping staked amount and time only in record
-    // earned royalties are calculated at point of withdrawal
-    // ???and record is destroyed???
+    // earned royalties are calculated at point of withdrawal/topup
 
     struct Record {
         address stakedBy;
         uint256 stakedAt;
         uint256 amount;
+        bool isActive;
     }
 
-    event Staked(Record record, uint256 totalStakes);
-    event Withdrawn(Record record, uint256 totalStakes);
+    enum ACTION {STAKE, WITHDRAW}
 
-    // e.g BOREDAPES NFT: 0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d
+    event Alert(Record record, ACTION action);
+
     string public gateTokenName;
     IERC721 public gateToken;
     IERC20 public stakeToken;
 
-    
     mapping(address => Record) private records;
     uint256 private totalStakes;
-    
-    
+
     uint256 public minStake = 1000;
-    // monthly-percentage-yield
+    // monthly-percentage-yield: a month is 30days
     uint256 public MPY = 10;
 
     constructor(
@@ -45,100 +43,95 @@ contract GatedStaker {
     modifier hasGateToken() {
         require(
             gateToken.balanceOf(msg.sender) > 0,
-            "caller have no gateToken"
+            "account has no gateToken"
         );
         _;
     }
 
-    modifier hasNoStake() {
-        require(records[msg.sender].amount == 0, "Has an active stake");
-        _;
-    }
-
-    modifier hasStake() {
-        require(records[msg.sender].amount >= 1, "Has no active stake");
-        _;
-    }
-
-    modifier validStake(uint256 _amount) {
-        require(_amount >= minStake, "Invalid Stake");
+    modifier validStake(uint256 _amt) {
+        require(_amt >= minStake, "Invalid Stake");
         _;
     }
 
     /**
      * Conditions:
      *  stake must be greater then minimum stake required
-     *  Allowing one active stake per account
+     *  autostaking used for multiple stakes
      *  account must have the gateToken
      */
-    function stake(uint256 _amount)
-        public
-        validStake(_amount)
-        hasNoStake
-        hasGateToken
-        returns (bool)
+
+    function stake(uint256 _amt) public validStake(_amt) hasGateToken returns (bool)
     {
         require(
-            stakeToken.transferFrom(msg.sender, address(this), _amount),
+            stakeToken.transferFrom(msg.sender, address(this), _amt),
             "Staking failed"
         );
+        // Avoiding assigning to function parameter
+        uint _totalAmt = _amt;
         Record storage _record = records[msg.sender];
-        _record.stakedBy = msg.sender;
-        _record.amount = _amount;
+
+        // check that record exist for account, and update accordingly
+        if (_record.isActive){
+            _totalAmt += calculateYield(_record);
+        }
+        else {
+            _record.stakedBy = msg.sender;
+            _record.isActive = true;
+        }
+        _record.amount = _totalAmt;
         _record.stakedAt = block.timestamp;
-
-        totalStakes += _amount;
-
-        emit Staked(_record, totalStakes);
+        updateAndEmit(_record, ACTION.STAKE);
         return true;
     }
 
     /**
      * conditions:
-     *    withdraws all staked fund for calling address
+     *    withdraws all staked fund for account
      */
-    function withdraw() public hasStake returns (bool) {
+    function withdraw() public returns (bool) {
         Record storage _record = records[msg.sender];
-        uint256 _maturity = block.timestamp - _record.stakedAt;
-        uint256 _amount = _record.amount;
+        require(_record.isActive, "No active record found");
+        uint256 _yield = calculateYield(_record);
+        uint256 _totalReturns = _yield + _record.amount;
 
-        uint256 _yield = calculateYield(_maturity, _amount);
-        uint256 _totalReturns = _yield + _amount;
-
-        // effect balances and records
-        totalStakes -= _record.amount;
-        delete records[msg.sender];
-
+        // effect and record
+        _record.isActive = false;
         require(
             stakeToken.transfer(msg.sender, _totalReturns),
             "Error Transfering"
         );
 
-        emit Withdrawn(_record, totalStakes);
+        updateAndEmit(_record, ACTION.WITHDRAW);
         return true;
     }
 
     // calculates and returns yield
-    function calculateYield(uint256 _maturity, uint256 _amount)
-        internal
-        view
-        returns (uint256)
+    function calculateYield(Record memory _record) internal view returns (uint256)
     {
         uint256 _yield = 0;
+        // cycle is 30days long
+        uint256 cycle = 30 days;
+        // uint256 minCycle = 3 days;
 
-        if (_maturity < 3 days) {
+        uint256 _maturity = block.timestamp - _record.stakedAt;
+
+        if (_maturity < 3 days || _maturity < cycle) {
             return _yield;
         }
 
-        // cycles is 30days long
-        uint256 _months = _maturity / 30 days;
+        uint256 _months = _maturity / cycle;
 
-        // for withdraws before a cycle completes, count month as 1
-        if (_months == 0) {
-            _months = 1;
-        }
-
-        _yield = (_months * MPY * _amount) / 100;
+        _yield = (_months * MPY * _record.amount) / 100;
         return _yield;
+    }
+
+    function updateAndEmit(Record _record, ACTION _action) internal view {
+        if (_action==ACTION.STAKE){
+            totalStakes += _record.amount;
+        }
+        else {
+            totalStakes -= _record.amount;
+        }
+        emit Alert(_record, _action);
     }
 }

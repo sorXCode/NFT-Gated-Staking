@@ -14,7 +14,6 @@ async function main() {
   // await hre.run('compile');
 
   // We get the contract to deploy
-  const [deployer] = await ethers.getSigners();
   const initialSupply = ethers.utils.parseEther("1");
   const BoredApeToken = await ethers.getContractFactory("BoredApeToken");
 
@@ -23,32 +22,6 @@ async function main() {
   await BAP.deployed();
 
   console.log("BoredApeToken deployed to:\t", BAP.address);
-  console.log(
-    "BoredApeToken totalSupply:\t",
-    (await BAP.totalSupply()).toString()
-  );
-  console.log(
-    "Balance of ",
-    deployer.address,
-    "=>  ",
-    (await BAP.balanceOf(deployer.address)).toString()
-  );
-
-  // Deploy GatedStaker
-  const gateTokenName = "BOREDAPES NFT";
-  const gateTokenAddr = "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d";
-  const stakedTokenAddr = BAP.address;
-
-  const GatedStaker = await ethers.getContractFactory("GatedStaker");
-  const gatedStaker = await GatedStaker.deploy(
-    gateTokenName,
-    gateTokenAddr,
-    stakedTokenAddr
-  );
-
-  await gatedStaker.deployed();
-
-  console.log("GatedStaker deployed to:\t", gatedStaker.address);
 }
 
 // We recommend this pattern to be able to use async/await everywhere
