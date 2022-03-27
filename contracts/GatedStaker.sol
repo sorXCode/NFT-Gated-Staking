@@ -1,8 +1,18 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+interface IERC20{
+    function transferFrom(address _from,address _to,uint256 _amount) external returns(bool);
+    function transfer(address _to,uint256 _amount) external returns(bool);
+    function symbol() external returns(string memory);
+    function balanceOf(address account) external view returns (uint256);
+    function decimals() external view returns (uint256);
+}
+
+interface IERC721{
+    function balanceOf(address account) external view returns (uint256);
+    function symbol() external returns(string memory);
+}
 
 contract GatedStaker {
     // keeping staked amount and time only in record
@@ -10,9 +20,9 @@ contract GatedStaker {
 
     struct Record {
         address stakedBy;
-        uint256 stakedAt;
-        uint256 amount;
         bool isActive;
+        uint128 stakedAt;
+        uint256 amount;
     }
 
     enum ACTION {
@@ -22,24 +32,23 @@ contract GatedStaker {
 
     event Alert(Record record, ACTION action);
 
-    string public gateTokenName;
-    IERC721 public gateToken;
-    IERC20 public stakeToken;
-
-    mapping(address => Record) private records;
+    IERC721 public immutable gateToken;
+    IERC20 public immutable stakeToken;
+    uint8 public constant MPY = 10;
+    uint32 public immutable minStake;
     uint256 private totalStakes;
+    string public gateTokenName;
+    mapping(address => Record) private records;
 
-    uint256 public minStake = 10**9;
-    uint256 public MPY = 10;
 
     constructor(
-        string memory _gateTokenName,
         address _gateTokenAddr,
         address _stakeTokenAddr
     ) {
-        gateTokenName = _gateTokenName;
         gateToken = IERC721(_gateTokenAddr);
+        gateTokenName = gateToken.symbol();
         stakeToken = IERC20(_stakeTokenAddr);
+        minStake = uint32(10**stakeToken.decimals()/2);
     }
 
     modifier hasGateToken() {
@@ -62,29 +71,21 @@ contract GatedStaker {
      *  account must have the gateToken
      */
 
-    function stake(uint256 _amt)
-        public
-        validStake(_amt)
-        hasGateToken
-        returns (bool)
-    {
-        require(
-            stakeToken.transferFrom(msg.sender, address(this), _amt),
-            "Staking failed"
-        );
-        // Avoiding assigning to function parameter
+    function stake(uint256 _amt) public validStake(_amt) hasGateToken returns (bool) {
+        require(stakeToken.transferFrom(msg.sender, address(this), _amt), "Staking failed");
+
         uint256 _totalAmt = _amt;
         Record storage _record = records[msg.sender];
 
         // check that record exist for account, and update accordingly
-        if (_record.isActive) {
-            _totalAmt += calculateYield(_record);
-        } else {
+        if (_record.isActive) {_totalAmt += _calculateYield(_record);}
+        else {
             _record.stakedBy = msg.sender;
             _record.isActive = true;
         }
+
         _record.amount = _totalAmt;
-        _record.stakedAt = block.timestamp;
+        _record.stakedAt = uint128(block.timestamp);
         updateAndEmit(_record, ACTION.STAKE);
         return true;
     }
@@ -96,7 +97,7 @@ contract GatedStaker {
     function withdraw() public returns (bool) {
         Record storage _record = records[msg.sender];
         require(_record.isActive, "No active record found");
-        uint256 _yield = calculateYield(_record);
+        uint256 _yield = _calculateYield(_record);
         uint256 _totalReturns = _yield + _record.amount;
 
         // effect and record
@@ -111,13 +112,9 @@ contract GatedStaker {
     }
 
     // calculates and returns yield
-    function calculateYield(Record memory _record)
-        internal
-        view
-        returns (uint256)
-    {
+    function _calculateYield(Record memory _record) internal view returns (uint256){
         uint256 _yield = 0;
-        // cycle is 30days long
+        // cycle is 1 second long
         uint256 cycle = 1 seconds;
         uint256 minCycle = 3 days;
 
@@ -128,8 +125,7 @@ contract GatedStaker {
         }
 
         uint256 _cycles = _maturity / cycle;
-
-        _yield = (_cycles * MPY * _record.amount) / (100 * 30 * 24); // yield earned to an hour
+        _yield = (_cycles * MPY * _record.amount) / (100 * 30 * 86400); // yield earned to a second
         return _yield;
     }
 
