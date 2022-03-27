@@ -35,7 +35,7 @@ contract GatedStaker {
     IERC721 public immutable gateToken;
     IERC20 public immutable stakeToken;
     uint8 public constant MPY = 10;
-    uint32 public immutable minStake;
+    uint64 public immutable minStake;
     uint256 private totalStakes;
     string public gateTokenName;
     mapping(address => Record) private records;
@@ -43,12 +43,13 @@ contract GatedStaker {
 
     constructor(
         address _gateTokenAddr,
-        address _stakeTokenAddr
+        address _stakeTokenAddr,
+        string memory _gateTokenName
     ) {
         gateToken = IERC721(_gateTokenAddr);
-        gateTokenName = gateToken.symbol();
         stakeToken = IERC20(_stakeTokenAddr);
-        minStake = uint32(10**stakeToken.decimals()/2);
+        gateTokenName = _gateTokenName;
+        minStake = 1e10;
     }
 
     modifier hasGateToken() {
