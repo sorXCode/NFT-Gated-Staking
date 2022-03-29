@@ -5,6 +5,7 @@
   "license": "MIT",
   "dependencies": {
     "@openzeppelin/contracts": "^4.5.0",
+    "defender-relay-client": "^1.19.0",
     "hardhat": "^2.9.1"
   },
   "devDependencies": {

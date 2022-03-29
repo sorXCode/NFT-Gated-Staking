@@ -126,7 +126,7 @@ contract GatedStaker {
         }
 
         uint256 _cycles = _maturity / cycle;
-        _yield = (_cycles * MPY * _record.amount) / (100 * 30 * 86400); // yield earned to a second
+        _yield = (_cycles * MPY * _record.amount) / (259200000); // yield earned to a second
         return _yield;
     }
 
